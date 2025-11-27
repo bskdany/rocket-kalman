@@ -4,20 +4,21 @@ import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 
 def load_srad_alt():
-    df = pd.read_csv('cuinspace_el_blasto_als_srad.csv')
+    df = pd.read_csv('cuinspace_el_blasto/altitude_srad.csv')
     altitude = df['metres'].values
     time = df['mission_time'].values
     return time, altitude
 
 def load_srad_pressure():
-    df = pd.read_csv('cuinspace_el_blasto_pressure_srad.csv')
+    df = pd.read_csv('cuinspace_el_blasto/pressure_srad.csv')
     pressure = df['pascals'].values
     time = df['mission_time'].values
     return time, pressure
 
-def load_cots_alt():
-    df = pd.read_csv('cuinspace_el_blasto_cots.csv')
-    altitude = df['TRACKER Alt asl'].values
+def load_easymini():
+    df = pd.read_csv('cuinspace_el_blasto/easymini.csv')
+    pressure = df['pressure'].values
+    altitude = df['altitude'].values
     time = range(len(altitude))
     return time, altitude
 
@@ -51,8 +52,6 @@ def plot_variance(time, data, window_size=50):
 
 pressure_resolution = 2.4  # Pa (at OSR 4096)
 
-x_0 = np.array([[94810]]) # initial sample based on 10 measurements
-P_0 = np.array([[pressure_resolution**2 / 10]])  # covariance matrix of the initial sample, pressure resolution from the datasheet (pascals^2) / 10
 F = np.array([[1.0]]) # state transition matrix, no change in pressure over time so stays the same
 H = np.array([[1.0]]) # state to measurement matrix, pressure is measured directly
 Q = np.array([[0.01]])  # no drift expected, very small value for numerical stability
@@ -70,3 +69,27 @@ def kalman_update(z_k, x_k_minus_1, P_k_minus_1):
     P_k = (I - K @ H) @ P_pred
     
     return x_k, P_k
+
+x = np.array([[94810]]) # initial sample based on 10 measurements
+P = np.array([[pressure_resolution**2 / 10]])  # covariance matrix of the initial sample, pressure resolution from the datasheet (pascals^2) / 10
+
+time, pressure = load_srad_pressure()
+easymini_time, easymini_pressure, easymini_altitude = load_easymini()
+
+corrected_pressure = []
+
+for i in range(len(time)):
+    z = np.array([[pressure[i]]])
+    x, P = kalman_update(z, x, P)
+    corrected_pressure.append(x[0,0])
+
+fig, (ax1, ax2) = plt.subplots(2, 1)
+ax1.scatter(time, pressure, s=1, label='Pressure')
+ax1.scatter(time, corrected_pressure, s=1, label='Corrected Pressure')
+ax1.set_xlabel('Time (seconds)')
+ax1.set_ylabel('Pressure (Pa)')
+ax1.set_title('Pressure over Time')
+ax1.legend()
+
+plt.tight_layout()
+plt.show()
