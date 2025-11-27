@@ -52,45 +52,76 @@ def plot_variance(time, data, window_size=50):
 
 pressure_resolution = 2.4  # Pa (at OSR 4096)
 
-F = np.array([[1.0]]) # state transition matrix, no change in pressure over time so stays the same
-H = np.array([[1.0]]) # state to measurement matrix, pressure is measured directly
-Q = np.array([[0.01]])  # no drift expected, very small value for numerical stability
-R = np.array([[pressure_resolution**2]])  # measurement noise covariance matrix, pressure resolution from the datasheet (pascals^2)
-I = np.array([[1.0]])
+# State: [pressure, pressure_rate]
+H = np.array([[1.0, 0.0]])
+Q = np.array([[1.0, 0.0],
+              [0.0, 10.0]])
+R = np.array([[pressure_resolution**2]])
+I = np.eye(2)
 
-def kalman_update(z_k, x_k_minus_1, P_k_minus_1):
-    # predict 
-    x_pred = F @ x_k_minus_1
-    P_pred = F @ P_k_minus_1 @ F.T + Q
+def kalman_predict(x_k_minus_1, P_k_minus_1, dt_step):
+    F_dt = np.array([[1.0, dt_step],
+                      [0.0, 1.0]])
+    x_pred = F_dt @ x_k_minus_1
+    P_pred = F_dt @ P_k_minus_1 @ F_dt.T + Q
+    return x_pred, P_pred
+
+def kalman_update(z_k, x_k_minus_1, P_k_minus_1, dt_step):
+    F_dt = np.array([[1.0, dt_step],
+                      [0.0, 1.0]])
+    x_pred = F_dt @ x_k_minus_1
+    P_pred = F_dt @ P_k_minus_1 @ F_dt.T + Q
     
-    # update
     K = P_pred @ H.T @ np.linalg.inv(H @ P_pred @ H.T + R)
     x_k = x_pred + K @ (z_k - H @ x_pred)
     P_k = (I - K @ H) @ P_pred
-    
     return x_k, P_k
-
-x = np.array([[94810]]) # initial sample based on 10 measurements
-P = np.array([[pressure_resolution**2 / 10]])  # covariance matrix of the initial sample, pressure resolution from the datasheet (pascals^2) / 10
+    
 
 time, pressure = load_srad_pressure()
 easymini_time, easymini_pressure, _= load_easymini()
+
+dt = np.mean(np.diff(time)) if len(time) > 1 else 0.07
+
+x = np.array([[pressure[0]],
+              [0.0]])
+P = np.array([[pressure_resolution**2 / 10, 0.0],
+              [0.0, 100.0]])
 
 corrected_pressure = []
 
 for i in range(len(time)):
     z = np.array([[pressure[i]]])
-    x, P = kalman_update(z, x, P)
+    dt_step = 0.0 if i == 0 else time[i] - time[i-1]
+    x, P = kalman_update(z, x, P, dt_step)
     corrected_pressure.append(x[0,0])
 
-fig, ax = plt.subplots(1, 1)
-ax.scatter(time, pressure, s=1, label='SRAD Pressure')
-ax.scatter(time, corrected_pressure, s=1, label='SRAD Kalman Pressure')
-ax.scatter(easymini_time, easymini_pressure, s=1, label='EasyMini Pressure')
-ax.set_xlabel('Time (seconds)')
-ax.set_ylabel('Pressure (Pa)')
-ax.set_title('Pressure over Time')
-ax.legend()
+predicted_pressure = []
+x = np.array([[pressure[0]],
+              [0.0]])
+P = np.array([[pressure_resolution**2 / 10, 0.0],
+              [0.0, 100.0]])
+
+for i in range(len(time)):
+    dt_step = 0.0 if i == 0 else time[i] - time[i-1]
+    
+    if(i % 14 == 0):
+        z = np.array([[pressure[i]]])
+        x, P = kalman_update(z, x, P, dt_step)
+        predicted_pressure.append(x[0,0])
+    else:
+        x, P = kalman_predict(x, P, dt_step)
+        predicted_pressure.append(x[0,0])
+
+fig, (ax1) = plt.subplots(1, 1, figsize=(10, 8))
+
+ax1.scatter(time, pressure, s=1, label='SRAD Pressure', alpha=0.3)
+ax1.scatter(time, corrected_pressure, s=1, label='SRAD Kalman Pressure')
+ax1.scatter(time, predicted_pressure, s=1, label='SRAD Predicted Pressure')
+ax1.set_xlabel('Time (seconds)')
+ax1.set_ylabel('Pressure (Pa)')
+ax1.set_title('Pressure over Time')
+ax1.legend()
 
 plt.tight_layout()
 plt.show()
