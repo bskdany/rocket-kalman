@@ -19,8 +19,8 @@ def load_easymini():
     df = pd.read_csv('cuinspace_el_blasto/easymini.csv')
     pressure = df['pressure'].values
     altitude = df['altitude'].values
-    time = range(len(altitude))
-    return time, altitude
+    time = df['time'].values
+    return time, pressure, altitude
 
 def plot_variance(time, data, window_size=50):
     df = pd.DataFrame({'time': time, 'data': data})
@@ -74,7 +74,7 @@ x = np.array([[94810]]) # initial sample based on 10 measurements
 P = np.array([[pressure_resolution**2 / 10]])  # covariance matrix of the initial sample, pressure resolution from the datasheet (pascals^2) / 10
 
 time, pressure = load_srad_pressure()
-easymini_time, easymini_pressure, easymini_altitude = load_easymini()
+easymini_time, easymini_pressure, _= load_easymini()
 
 corrected_pressure = []
 
@@ -83,13 +83,14 @@ for i in range(len(time)):
     x, P = kalman_update(z, x, P)
     corrected_pressure.append(x[0,0])
 
-fig, (ax1, ax2) = plt.subplots(2, 1)
-ax1.scatter(time, pressure, s=1, label='Pressure')
-ax1.scatter(time, corrected_pressure, s=1, label='Corrected Pressure')
-ax1.set_xlabel('Time (seconds)')
-ax1.set_ylabel('Pressure (Pa)')
-ax1.set_title('Pressure over Time')
-ax1.legend()
+fig, ax = plt.subplots(1, 1)
+ax.scatter(time, pressure, s=1, label='SRAD Pressure')
+ax.scatter(time, corrected_pressure, s=1, label='SRAD Kalman Pressure')
+ax.scatter(easymini_time, easymini_pressure, s=1, label='EasyMini Pressure')
+ax.set_xlabel('Time (seconds)')
+ax.set_ylabel('Pressure (Pa)')
+ax.set_title('Pressure over Time')
+ax.legend()
 
 plt.tight_layout()
 plt.show()
