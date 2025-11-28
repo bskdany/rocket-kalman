@@ -84,26 +84,48 @@ def kalman_update(z_k, x_k_minus_1, P_k_minus_1, dt_step):
     x_k = x_pred + K @ (z_k - H @ x_pred)
     P_k = (I - K @ H) @ P_pred
     return x_k, P_k
+
+def find_min_update_interval(time, pressure, max_error, max_steps=200):
+    # Find minimum steps between Kalman updates such that prediction error < max_error
+    # Looks through max_steps possible intervals
+
+    errors = {}
+    
+    for step_interval in range(1, max_steps + 1):
+        x = np.array([[pressure[0]],
+                      [0.0],
+                      [0.0]])
+        P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
+                      [0.0, 100.0, 0.0],
+                      [0.0, 0.0, 50.0]])
+        
+        predicted_pressure = []
+        max_abs_error = 0.0
+        
+        for i in range(len(time)):
+            dt_step = 0.0 if i == 0 else time[i] - time[i-1]
+            
+            if i % step_interval == 0:
+                z = np.array([[pressure[i]]])
+                x, P = kalman_update(z, x, P, dt_step)
+                predicted_pressure.append(x[0,0])
+            else:
+                x, P = kalman_predict(x, P, dt_step)
+                predicted_pressure.append(x[0,0])
+            
+            error = abs(predicted_pressure[-1] - pressure[i])
+            max_abs_error = max(max_abs_error, error)
+        
+        errors[step_interval] = max_abs_error
+        
+        if max_abs_error <= max_error:
+            return step_interval, errors
+    
+    return errors
     
 
 time, pressure, _= load_easymini()
-
 dt = np.mean(np.diff(time)) if len(time) > 1 else 0.07
-
-x = np.array([[pressure[0]],
-              [0.0],  # pressure_velocity
-              [0.0]])  # pressure_acceleration
-P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
-              [0.0, 100.0, 0.0],
-              [0.0, 0.0, 50.0]])
-
-# corrected_pressure = []
-
-# for i in range(len(time)):
-#     z = np.array([[pressure[i]]])
-#     dt_step = 0.0 if i == 0 else time[i] - time[i-1]
-#     x, P = kalman_update(z, x, P, dt_step)
-#     corrected_pressure.append(x[0,0])
 
 predicted_pressure = []
 x = np.array([[pressure[0]],
@@ -113,26 +135,30 @@ P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
               [0.0, 100.0, 0.0],
               [0.0, 0.0, 50.0]])
 
-for i in range(len(time)):
-    dt_step = 0.0 if i == 0 else time[i] - time[i-1]
+# for i in range(len(time)):
+#     dt_step = 0.0 if i == 0 else time[i] - time[i-1]
     
-    if(i % 100 == 0):
-        z = np.array([[pressure[i]]])
-        x, P = kalman_update(z, x, P, dt_step)
-        predicted_pressure.append(x[0,0])
-    else:
-        x, P = kalman_predict(x, P, dt_step)
-        predicted_pressure.append(x[0,0])
+#     if(i % 100 == 0):
+#         z = np.array([[pressure[i]]])
+#         x, P = kalman_update(z, x, P, dt_step)
+#         predicted_pressure.append(x[0,0])
+#     else:
+#         x, P = kalman_predict(x, P, dt_step)
+#         predicted_pressure.append(x[0,0])
+
+errors_dict = find_min_update_interval(time, pressure, 100)
 
 fig, (ax1) = plt.subplots(1, 1, figsize=(10, 8))
 
-# ax1.scatter(time, pressure, s=1, label='SRAD Pressure', alpha=0.3)
-ax1.scatter(time, pressure, s=1, label='Pressure')
-ax1.scatter(time, predicted_pressure, s=1, label='Predicted Pressure')
-ax1.set_xlabel('Time (seconds)')
-ax1.set_ylabel('Pressure (Pa)')
-ax1.set_title('Pressure over Time')
-ax1.legend()
+intervals = list(errors_dict.keys())
+errors = [float(errors_dict[i]) for i in intervals]
+
+ax1.plot(intervals, errors, 'o-', markersize=3, linewidth=1)
+ax1.set_xlabel('Update Interval (steps)')
+ax1.set_ylabel('Maximum Prediction Error (Pa)')
+ax1.set_title('Prediction Error vs Update Interval')
+ax1.set_yscale('log')
+ax1.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.show()
