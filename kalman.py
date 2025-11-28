@@ -52,24 +52,31 @@ def plot_variance(time, data, window_size=50):
 
 pressure_resolution = 2.4  # Pa (at OSR 4096)
 
-H = np.array([[1.0, 0.0]])
+H = np.array([[1.0, 0.0, 0.0]])
 
-Q = np.array([[1.0, 0.0],
-              [0.0, 10.0]])
+Q = np.array([[1.0, 0.0, 0.0],
+              [0.0, 10.0, 0.0],
+              [0.0, 0.0, 10.0]])
 
 R = np.array([[pressure_resolution**2]])
-I = np.eye(2)
+I = np.eye(3)
 
 def kalman_predict(x_k_minus_1, P_k_minus_1, dt_step):
-    F_dt = np.array([[1.0, dt_step],
-                      [0.0, 1.0]])
+    # State: [pressure, pressure_velocity, pressure_acceleration]
+    # pressure_new = pressure_old + velocity_old * dt + 0.5 * acceleration_old * dt^2
+    # velocity_new = velocity_old + acceleration_old * dt
+    # acceleration_new = acceleration_old
+    F_dt = np.array([[1.0, dt_step, 0.5 * dt_step**2],
+                     [0.0, 1.0, dt_step],
+                     [0.0, 0.0, 1.0]])
     x_pred = F_dt @ x_k_minus_1
     P_pred = F_dt @ P_k_minus_1 @ F_dt.T + Q
     return x_pred, P_pred
 
 def kalman_update(z_k, x_k_minus_1, P_k_minus_1, dt_step):
-    F_dt = np.array([[1.0, dt_step],
-                      [0.0, 1.0]])
+    F_dt = np.array([[1.0, dt_step, 0.5 * dt_step**2],
+                     [0.0, 1.0, dt_step],
+                     [0.0, 0.0, 1.0]])
     x_pred = F_dt @ x_k_minus_1
     P_pred = F_dt @ P_k_minus_1 @ F_dt.T + Q
     
@@ -84,9 +91,11 @@ time, pressure, _= load_easymini()
 dt = np.mean(np.diff(time)) if len(time) > 1 else 0.07
 
 x = np.array([[pressure[0]],
-              [0.0]])
-P = np.array([[pressure_resolution**2 / 10, 0.0],
-              [0.0, 100.0]])
+              [0.0],  # pressure_velocity
+              [0.0]])  # pressure_acceleration
+P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
+              [0.0, 100.0, 0.0],
+              [0.0, 0.0, 50.0]])
 
 # corrected_pressure = []
 
@@ -98,9 +107,11 @@ P = np.array([[pressure_resolution**2 / 10, 0.0],
 
 predicted_pressure = []
 x = np.array([[pressure[0]],
-              [0.0]])
-P = np.array([[pressure_resolution**2 / 10, 0.0],
-              [0.0, 100.0]])
+              [0.0],  # pressure_velocity
+              [0.0]])  # pressure_acceleration
+P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
+              [0.0, 100.0, 0.0],
+              [0.0, 0.0, 50.0]])
 
 for i in range(len(time)):
     dt_step = 0.0 if i == 0 else time[i] - time[i-1]
