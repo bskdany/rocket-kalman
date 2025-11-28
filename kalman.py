@@ -92,24 +92,22 @@ def mean_squared_error(original, predicted):
 def plot_losses(losses):
     plt.scatter(range(len(losses)), losses)
     plt.xlabel("Prediction step delay")
-    plt.ylabel("Avg Loss")
-    plt.savefig("average_loss_predicted_pressure_cots")
+    plt.ylabel("Mean squarer error loss ")
+    plt.savefig("average_loss_predicted_pressure_cots", dpi=300)
     plt.show()
 
-def plot_pressure_vs_predicted(pressure, predicted_pressure):
+def plot_pressure_vs_predicted(time, pressure, predicted_pressure):
     def onpick(event):
         if event.xdata is not None and event.ydata is not None:
             print(f"Clicked at x: {event.xdata}, y: {event.ydata}")
         
     fig, ax = plt.subplots()
-    plt.scatter(range(len(pressure)), pressure, s=2)
-    plt.scatter(range(len(predicted_pressure)), predicted_pressure, s=1)
-    plt.xlabel("time")
-    plt.ylabel("pressure")
+    plt.scatter(time, pressure, s=2)
+    plt.scatter(time, predicted_pressure, s=1)
+    plt.xlabel("Time (seconds)")
+    plt.ylabel("Pressure (Pa)")
     cid = fig.canvas.mpl_connect('button_press_event', onpick)
     plt.show()
-
-
 
 time, pressure, _= load_easymini()
 
@@ -135,12 +133,10 @@ for i in range(1, 100):
         else:
             x, P = kalman_predict(x, P, dt_step)
             predicted_pressure[j] = x[0,0]
+
+    # if(i == 80):
+    #     plot_pressure_vs_predicted(time, pressure, predicted_pressure)
     
-
-    # if(i == 23):
-    #     print("printing")
-    #     plot_pressure_vs_predicted(pressure, predicted_pressure)
-
     losses.append(mean_squared_error(pressure, predicted_pressure))
 
 plot_losses(losses)
