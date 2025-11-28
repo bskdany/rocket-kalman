@@ -52,10 +52,11 @@ def plot_variance(time, data, window_size=50):
 
 pressure_resolution = 2.4  # Pa (at OSR 4096)
 
-# State: [pressure, pressure_rate]
 H = np.array([[1.0, 0.0]])
+
 Q = np.array([[1.0, 0.0],
               [0.0, 10.0]])
+
 R = np.array([[pressure_resolution**2]])
 I = np.eye(2)
 
@@ -78,8 +79,7 @@ def kalman_update(z_k, x_k_minus_1, P_k_minus_1, dt_step):
     return x_k, P_k
     
 
-time, pressure = load_srad_pressure()
-easymini_time, easymini_pressure, _= load_easymini()
+time, pressure, _= load_easymini()
 
 dt = np.mean(np.diff(time)) if len(time) > 1 else 0.07
 
@@ -88,13 +88,13 @@ x = np.array([[pressure[0]],
 P = np.array([[pressure_resolution**2 / 10, 0.0],
               [0.0, 100.0]])
 
-corrected_pressure = []
+# corrected_pressure = []
 
-for i in range(len(time)):
-    z = np.array([[pressure[i]]])
-    dt_step = 0.0 if i == 0 else time[i] - time[i-1]
-    x, P = kalman_update(z, x, P, dt_step)
-    corrected_pressure.append(x[0,0])
+# for i in range(len(time)):
+#     z = np.array([[pressure[i]]])
+#     dt_step = 0.0 if i == 0 else time[i] - time[i-1]
+#     x, P = kalman_update(z, x, P, dt_step)
+#     corrected_pressure.append(x[0,0])
 
 predicted_pressure = []
 x = np.array([[pressure[0]],
@@ -105,7 +105,7 @@ P = np.array([[pressure_resolution**2 / 10, 0.0],
 for i in range(len(time)):
     dt_step = 0.0 if i == 0 else time[i] - time[i-1]
     
-    if(i % 14 == 0):
+    if(i % 100 == 0):
         z = np.array([[pressure[i]]])
         x, P = kalman_update(z, x, P, dt_step)
         predicted_pressure.append(x[0,0])
@@ -115,9 +115,9 @@ for i in range(len(time)):
 
 fig, (ax1) = plt.subplots(1, 1, figsize=(10, 8))
 
-ax1.scatter(time, pressure, s=1, label='SRAD Pressure', alpha=0.3)
-ax1.scatter(time, corrected_pressure, s=1, label='SRAD Kalman Pressure')
-ax1.scatter(time, predicted_pressure, s=1, label='SRAD Predicted Pressure')
+# ax1.scatter(time, pressure, s=1, label='SRAD Pressure', alpha=0.3)
+ax1.scatter(time, pressure, s=1, label='Pressure')
+ax1.scatter(time, predicted_pressure, s=1, label='Predicted Pressure')
 ax1.set_xlabel('Time (seconds)')
 ax1.set_ylabel('Pressure (Pa)')
 ax1.set_title('Pressure over Time')
