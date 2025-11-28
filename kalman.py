@@ -113,30 +113,93 @@ time, pressure, _= load_easymini()
 
 dt = np.mean(np.diff(time)) if len(time) > 1 else 0.07
 
-losses = []
-
-for i in range(1, 100):
-    predicted_pressure = np.zeros(len(time))
-    x = np.array([[pressure[0]],
-                [0.0],  # pressure_velocity
-                [0.0]])  # pressure_acceleration
-    P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
-                [0.0, 100.0, 0.0],
-                [0.0, 0.0, 50.0]])
-    for j in range(len(time)):
-        dt_step = 0.0 if j == 0 else time[j] - time[j-1]
+def find_update_delay_index(communication_delay=2.0):
+    losses = []
+    for i in range(1, 100):
+        predicted_pressure = np.zeros(len(time))
+        x = np.array([[pressure[0]],
+                    [0.0],  # pressure_velocity
+                    [0.0]])  # pressure_acceleration
+        P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
+                    [0.0, 100.0, 0.0],
+                    [0.0, 0.0, 50.0]])
         
-        if(j % i == 0):
-            z = np.array([[pressure[j]]])
-            x, P = kalman_update(z, x, P, dt_step)
-            predicted_pressure[j] = x[0,0]
-        else:
-            x, P = kalman_predict(x, P, dt_step)
-            predicted_pressure[j] = x[0,0]
+        for j in range(len(time)):
+            dt_step = 0.0 if j == 0 else time[j] - time[j-1]
+            
+            # Find the measurement from communication_delay seconds ago
+            delayed_time = time[j] - communication_delay
+            
+            # Find the index of the delayed measurement
+            delayed_idx = None
+            for k in range(j, -1, -1):  # Search backwards
+                if time[k] <= delayed_time:
+                    delayed_idx = k
+                    break
+            
+            # Only update if we have a delayed measurement available
+            if(j % i == 0 and delayed_idx is not None):
+                z = np.array([[pressure[delayed_idx]]])
+                x, P = kalman_update(z, x, P, dt_step)
+                predicted_pressure[j] = x[0,0]
+            else:
+                x, P = kalman_predict(x, P, dt_step)
+                predicted_pressure[j] = x[0,0]
+        
+        losses.append(mean_squared_error(pressure, predicted_pressure))
 
-    # if(i == 80):
-    #     plot_pressure_vs_predicted(time, pressure, predicted_pressure)
+    plot_losses(losses)
+
+def find_optimal_update_and_delay():
+    max_steps = 100
+    max_delay_seconds = 2.0
+    delay_step = 0.1  
     
-    losses.append(mean_squared_error(pressure, predicted_pressure))
+    num_delays = int(max_delay_seconds / delay_step) + 1
+    losses = np.zeros((max_steps - 1, num_delays))
+    
+    for delay_idx, communication_delay in enumerate(np.arange(0, max_delay_seconds + delay_step, delay_step)):
+        print(f"Testing delay: {communication_delay:.1f}s")
+        
+        for i in range(1, max_steps):
+            predicted_pressure = np.zeros(len(time))
+            x = np.array([[pressure[0]],
+                        [0.0],  # pressure_velocity
+                        [0.0]])  # pressure_acceleration
+            P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
+                        [0.0, 100.0, 0.0],
+                        [0.0, 0.0, 50.0]])
+            
+            for j in range(len(time)):
+                dt_step = 0.0 if j == 0 else time[j] - time[j-1]
+                
+                delayed_time = time[j] - communication_delay
+                delayed_idx = np.searchsorted(time[:j+1], delayed_time, side='right') - 1
+                
+                if(j % i == 0 and delayed_idx >= 0):
+                    z = np.array([[pressure[delayed_idx]]])
+                    x, P = kalman_update(z, x, P, dt_step)
+                    predicted_pressure[j] = x[0,0]
+                else:
+                    x, P = kalman_predict(x, P, dt_step)
+                    predicted_pressure[j] = x[0,0]
+            
+            losses[i-1, delay_idx] = mean_squared_error(pressure, predicted_pressure)
+    
+    # heatmap
+    fig, ax = plt.subplots(figsize=(10, 8))
+    delays = np.arange(0, max_delay_seconds + delay_step, delay_step)
+    steps = np.arange(1, max_steps)
+    
+    im = ax.imshow(losses, aspect='auto', origin='lower', cmap='viridis',
+                   extent=[delays[0], delays[-1], steps[0], steps[-1]])
+    ax.set_xlabel('Communication Delay (seconds)')
+    ax.set_ylabel('Update Step Interval')
+    ax.set_title('Mean Squared Error Loss')
+    ax.legend()
+    
+    plt.colorbar(im, ax=ax, label='MSE Loss')
+    plt.savefig("optimization_heatmap.png", dpi=300)
+    plt.show()
 
-plot_losses(losses)
+find_optimal_update_and_delay()
