@@ -151,7 +151,7 @@ def find_update_delay_index(communication_delay=2.0):
     plot_losses(losses)
 
 def find_optimal_update_and_delay():
-    max_steps = 100
+    max_steps = 200
     max_delay_seconds = 2.0
     delay_step = 0.1  
     
@@ -186,20 +186,29 @@ def find_optimal_update_and_delay():
             
             losses[i-1, delay_idx] = mean_squared_error(pressure, predicted_pressure)
     
-    # heatmap
-    fig, ax = plt.subplots(figsize=(10, 8))
+    # Create 3D plot
+    fig = plt.figure(figsize=(12, 9))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Create meshgrid
     delays = np.arange(0, max_delay_seconds + delay_step, delay_step)
     steps = np.arange(1, max_steps)
+    X, Y = np.meshgrid(delays, steps)
     
-    im = ax.imshow(losses, aspect='auto', origin='lower', cmap='viridis',
-                   extent=[delays[0], delays[-1], steps[0], steps[-1]])
+    # Plot surface
+    surf = ax.plot_surface(X, Y, losses, cmap='viridis', alpha=0.8)
+    
     ax.set_xlabel('Communication Delay (seconds)')
     ax.set_ylabel('Update Step Interval')
+    ax.set_zlabel('MSE Loss')
     ax.set_title('Mean Squared Error Loss')
-    ax.legend()
     
-    plt.colorbar(im, ax=ax, label='MSE Loss')
-    plt.savefig("optimization_heatmap.png", dpi=300)
+    # Add colorbar
+    fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5)
+    
+    plt.savefig("optimization_3d_surface.png", dpi=300)
     plt.show()
+    
+    return losses
 
 find_optimal_update_and_delay()
