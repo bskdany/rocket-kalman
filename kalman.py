@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
+import os
 
 def load_srad_alt():
     df = pd.read_csv('cuinspace_el_blasto/altitude_srad.csv')
@@ -20,7 +21,7 @@ def load_easymini():
     pressure = df['pressure'].values
     altitude = df['altitude'].values
     time = df['time'].values
-    return time, pressure, altitude
+    return np.array(time), np.array(pressure), np.array(altitude)
 
 def plot_variance(time, data, window_size=50):
     df = pd.DataFrame({'time': time, 'data': data})
@@ -85,80 +86,61 @@ def kalman_update(z_k, x_k_minus_1, P_k_minus_1, dt_step):
     P_k = (I - K @ H) @ P_pred
     return x_k, P_k
 
-def find_min_update_interval(time, pressure, max_error, max_steps=200):
-    # Find minimum steps between Kalman updates such that prediction error < max_error
-    # Looks through max_steps possible intervals
+def mean_squared_error(original, predicted):
+    return np.mean(np.square(original - predicted))
 
-    errors = {}
-    
-    for step_interval in range(1, max_steps + 1):
-        x = np.array([[pressure[0]],
-                      [0.0],
-                      [0.0]])
-        P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
-                      [0.0, 100.0, 0.0],
-                      [0.0, 0.0, 50.0]])
+def plot_losses(losses):
+    plt.scatter(range(len(losses)), losses)
+    plt.xlabel("Prediction step delay")
+    plt.ylabel("Avg Loss")
+    plt.savefig("average_loss_predicted_pressure_cots")
+    plt.show()
+
+def plot_pressure_vs_predicted(pressure, predicted_pressure):
+    def onpick(event):
+        if event.xdata is not None and event.ydata is not None:
+            print(f"Clicked at x: {event.xdata}, y: {event.ydata}")
         
-        predicted_pressure = []
-        max_abs_error = 0.0
-        
-        for i in range(len(time)):
-            dt_step = 0.0 if i == 0 else time[i] - time[i-1]
-            
-            if i % step_interval == 0:
-                z = np.array([[pressure[i]]])
-                x, P = kalman_update(z, x, P, dt_step)
-                predicted_pressure.append(x[0,0])
-            else:
-                x, P = kalman_predict(x, P, dt_step)
-                predicted_pressure.append(x[0,0])
-            
-            error = abs(predicted_pressure[-1] - pressure[i])
-            max_abs_error = max(max_abs_error, error)
-        
-        errors[step_interval] = max_abs_error
-        
-        if max_abs_error <= max_error:
-            return step_interval, errors
-    
-    return errors
-    
+    fig, ax = plt.subplots()
+    plt.scatter(range(len(pressure)), pressure, s=2)
+    plt.scatter(range(len(predicted_pressure)), predicted_pressure, s=1)
+    plt.xlabel("time")
+    plt.ylabel("pressure")
+    cid = fig.canvas.mpl_connect('button_press_event', onpick)
+    plt.show()
+
+
 
 time, pressure, _= load_easymini()
+
 dt = np.mean(np.diff(time)) if len(time) > 1 else 0.07
 
-predicted_pressure = []
-x = np.array([[pressure[0]],
-              [0.0],  # pressure_velocity
-              [0.0]])  # pressure_acceleration
-P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
-              [0.0, 100.0, 0.0],
-              [0.0, 0.0, 50.0]])
+losses = []
 
-# for i in range(len(time)):
-#     dt_step = 0.0 if i == 0 else time[i] - time[i-1]
+for i in range(1, 100):
+    predicted_pressure = np.zeros(len(time))
+    x = np.array([[pressure[0]],
+                [0.0],  # pressure_velocity
+                [0.0]])  # pressure_acceleration
+    P = np.array([[pressure_resolution**2 / 10, 0.0, 0.0],
+                [0.0, 100.0, 0.0],
+                [0.0, 0.0, 50.0]])
+    for j in range(len(time)):
+        dt_step = 0.0 if j == 0 else time[j] - time[j-1]
+        
+        if(j % i == 0):
+            z = np.array([[pressure[j]]])
+            x, P = kalman_update(z, x, P, dt_step)
+            predicted_pressure[j] = x[0,0]
+        else:
+            x, P = kalman_predict(x, P, dt_step)
+            predicted_pressure[j] = x[0,0]
     
-#     if(i % 100 == 0):
-#         z = np.array([[pressure[i]]])
-#         x, P = kalman_update(z, x, P, dt_step)
-#         predicted_pressure.append(x[0,0])
-#     else:
-#         x, P = kalman_predict(x, P, dt_step)
-#         predicted_pressure.append(x[0,0])
 
-errors_dict = find_min_update_interval(time, pressure, 100)
+    # if(i == 23):
+    #     print("printing")
+    #     plot_pressure_vs_predicted(pressure, predicted_pressure)
 
-fig, (ax1) = plt.subplots(1, 1, figsize=(10, 8))
+    losses.append(mean_squared_error(pressure, predicted_pressure))
 
-intervals = list(errors_dict.keys())
-errors = [float(errors_dict[i]) for i in intervals]
-
-ax1.plot(intervals, errors, 'o-', markersize=3, linewidth=1)
-ax1.set_xlabel('Update Interval (steps)')
-ax1.set_ylabel('Maximum Prediction Error (Pa)')
-ax1.set_title('Prediction Error vs Update Interval')
-ax1.set_yscale('log')
-ax1.grid(True, alpha=0.3)
-
-plt.tight_layout()
-plt.show()
+plot_losses(losses)
